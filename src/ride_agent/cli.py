@@ -5,9 +5,9 @@ import json
 import logging
 import sys
 from typing import Optional, Sequence
-
+import os
 from ride_agent.tools.geocoding import geocode_location
-
+from ride_agent.agent.llm.openai import OpenAICompatibleProvider
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,24 +31,38 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         action="store_true",
         help="Use the Stage 6 sequential LLM+MCP agent loop instead of direct geocoding.",
     )
+   
+    parser.add_argument(
+    "--provider",
+    choices=["ollama", "openai"],
+    default="ollama",
+)
+
     parser.add_argument(
         "--model",
-        default="qwen2.5:3b",
-        help="Ollama model to use (default: qwen2.5:3b).",
+        required=True,
     )
 
     args = parser.parse_args(argv)
 
     if args.llm:
         # Stage 6: sequential LLM+MCP agent loop
-        _run_llm_integration(args.location, args.model)
+        _run_llm_integration(
+            user_request=args.location,
+            model_name=args.model,
+            provider_name=args.provider,
+        )
     else:
         # Original Stage 1: Direct geocoding
         result = geocode_location(args.location)
         print(json.dumps(result, indent=2))
 
 
-def _run_llm_integration(user_request: str, model_name: str) -> None:
+def _run_llm_integration(
+    user_request: str,
+    model_name: str,
+    provider_name: str,
+) -> None:
     """Run the Stage 6 sequential LLM + MCP agent loop."""
 
     from ride_agent.agent import Stage5Orchestrator
@@ -58,13 +72,38 @@ def _run_llm_integration(user_request: str, model_name: str) -> None:
     print("STAGE 6: SEQUENTIAL AGENT LOOP (LLM + MCP)")
     print("=" * 70)
     print(f"\nUser Request:\n{user_request}\n")
+    print(f"Model: {model_name}")
+    print(f"\nUser Request:\n{user_request}\n")
 
-    # Concrete provider is created at the application/CLI boundary.
-    provider = OllamaProvider(model_name=model_name)
+    if provider_name == "ollama":
+        provider = OllamaProvider(model_name=model_name)
+
+    elif provider_name == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+       
+
+        if not api_key:
+            print("\nError: OPENAI_API_KEY is not set.")
+            print("Add it to your .env file or environment variables.")
+            sys.exit(1)
+
+        provider = OpenAICompatibleProvider(
+            model_name=model_name,
+            api_key=api_key,
+            base_url=os.getenv(
+                "OPENAI_BASE_URL",
+                "https://api.openai.com/v1",
+            ),
+        )
+
+    else:
+        # Defensive check; argparse already restricts the value.
+        print(f"\nError: Unsupported provider: {provider_name}")
+        sys.exit(1)
 
     orchestrator = Stage5Orchestrator(
         llm_provider=provider
-    )
+)
 
     try:
         if not orchestrator.initialize():

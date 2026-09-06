@@ -96,25 +96,29 @@ class OpenAICompatibleProvider(LLMProvider):
         client = self.get_client()
 
         payload = {
-            "model": self.model_name,
-            "messages": messages,
-            # BUGFIX (found while implementing Stage 6): this previously
-            # called self._to_ollama_tool_format(tools), a method that
-            # does not exist on this class. It would have raised
-            # AttributeError the first time this provider was actually
-            # invoked for real (Stage 5 tests never exercised this path
-            # because they mock the provider).
-            "tools": self._to_openai_tool_format(tools),
-        }
+    "model": self.model_name,
+    "messages": messages,
+    "tools": self._to_openai_tool_format(tools),
+    "reasoning_effort": "none",
+    "stream": False,
+}
 
         response = client.post(
-            self.api_url,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-        )
+    self.api_url,
+    json=payload,
+    headers={
+        "Authorization": f"Bearer {self.api_key}",
+        "Content-Type": "application/json",
+    },
+)
+
+        if response.status_code >= 400:
+            logger.error(
+                "OpenAI API error %s: %s",
+                response.status_code,
+                response.text,
+            )
+
         response.raise_for_status()
 
         result = response.json()

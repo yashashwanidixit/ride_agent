@@ -1,6 +1,6 @@
 # Ride Agent
 
-A local-first AI ride agent built around an **LLM + MCP architecture**. The agent interprets natural-language ride requests, selects the required tools, executes them through an MCP server, chains multiple tool calls, and continues a request across multiple conversational turns.
+A local-first AI ride agent built around an **LLM + MCP architecture**. The agent interprets natural-language ride requests, selects the required tools, executes them through an MCP server.
 
 ## Architecture
 
@@ -48,8 +48,7 @@ The agent can:
 - select only the tools required for a request,
 - chain multiple tools sequentially,
 - use previous tool results to determine the next action,
-- maintain context across multiple conversational turns,
-- continue a request after additional information is supplied.
+
 
 ## Example
 
@@ -96,4 +95,4 @@ Keep API credentials in a local `.env` file and never commit secrets.
 
 ## Project Goal
 
-Demonstrate **model-driven tool selection, sequential tool use, MCP-based execution, and multi-turn conversation management** while keeping the LLM provider replaceable and the underlying ride tools independent of the model.
+Demonstrate **model-driven tool selection, sequential tool use, MCP-based execution** while keeping the LLM provider replaceable and the underlying ride tools independent of the model.
