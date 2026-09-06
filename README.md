@@ -1,196 +1,98 @@
-# Ride Concierge AI Agent - Stage 1 (MCP Geocoding Server)
+# Ride Agent
 
-This repository contains **Stage 1** of the Ride Concierge AI Agent: a working Model Context Protocol (MCP) server exposing the `geocode_location` tool backed by OpenStreetMap Nominatim.
+A local-first AI ride agent built around an **LLM + MCP architecture**. The agent interprets natural-language ride requests, selects the required tools, executes them through an MCP server, chains multiple tool calls.
 
----
+## Architecture
 
-## 1. What Stage 1 Does
-
-Stage 1 provides a reliable geocoding tool via the Model Context Protocol (MCP). It converts a human-readable location, landmark, or address into structured geographic coordinates (latitude and longitude) along with the formatted display name.
-
-- Exposes the tool `geocode_location(location: str)` via an MCP server.
-- Uses OpenStreetMap Nominatim API for geocoding.
-- Automatically handles query normalization, in-memory caching, rate limiting, and network/HTTP errors without exposing internal tracebacks.
-
----
-
-## 2. Architecture
-
-```
-User / Caller
-      ↓
-[MCP Host / Client]
-      ↓ (stdio JSON-RPC)
-[MCP Server (src/ride_agent/server.py)]
-      ↓
-[MCP Tool: geocode_location (src/ride_agent/tools/geocoding.py)]
-      ↓
-[Service: NominatimService (src/ride_agent/services/nominatim.py)]
-   ├── In-Memory Cache (hits return immediately)
-   ├── Rate Limiter (max 1 request/second)
-   └── HTTP Client (identifiable User-Agent)
-      ↓
-OpenStreetMap Nominatim API (https://nominatim.openstreetmap.org/search)
+```text
+User / CLI
+    ↓
+Conversation Manager / Orchestrator
+    ├── LLM Provider
+    │     ├── Ollama + Qwen 2.5:3B (local)
+    │     └── OpenAI-compatible provider
+    │
+    └── MCP Client
+          ↓
+       MCP Server
+       ├── geocode_location → OpenStreetMap Nominatim
+       ├── get_ride_time    → OSRM
+       └── get_ride_price   → Deterministic fare calculation
 ```
 
-### Component Separation
-- **`src/ride_agent/tools/`**: MCP-facing tool registration and parameter/error shielding.
-- **`src/ride_agent/services/`**: External API integration, rate limiting, in-memory query caching, and HTTP communication.
-- **`src/ride_agent/server.py`**: MCP server initialization and protocol entry point.
+- **Orchestrator / Conversation Manager:** owns conversation history, the agent loop, and multi-turn continuity.
+- **LLM Provider:** handles model-specific API calls and message/tool formatting. The agent logic stays provider-independent.
+- **MCP Client:** communicates with the MCP server through MCP instead of calling tools directly.
+- **MCP Server:** exposes the ride capabilities as MCP tools.
 
----
+## Ride Information APIs
 
-## 3. Installation
+A direct live ride-provider API for fare/booking (such as Uber/Ola) was not available for this implementation because the required API access/authentication was not accessible.
 
-Requires Python **>= 3.10**.
+Therefore:
 
-1. Clone or navigate to the repository:
-   ```bash
-   cd mycode/ride_agent
-   ```
+- **Location coordinates:** OpenStreetMap Nominatim
+- **Distance & travel time:** OSRM routing
+- **Fare:** deterministic demo calculation based on distance and duration
 
-2. Install dependencies:
-   ```bash
-   pip install -e .
-   ```
-   Or install requirements directly:
-   ```bash
-   pip install "mcp[cli]>=2.1.0" "httpx>=0.28.0" "python-dotenv>=1.0.0" pytest anyio
-   ```
-
----
-
-## 4. Environment Variables
-
-Create a `.env` file or export the environment variable:
-
-```bash
-# Nominatim User-Agent identifier (required by OSM Nominatim usage policy)
-RIDE_AGENT_USER_AGENT=ride-agent-hackathon/0.1
+```text
+Fare = ₹50 + (distance_km × ₹15) + (duration_minutes × ₹2)
 ```
 
-If not provided, the service defaults to `ride-agent-hackathon/0.1`.
+The fare is an **estimate**, not a live ride-provider quote.
 
----
+## Agent Behavior
 
-## 5. How to Start the MCP Server
+The agent can:
 
-To run the MCP server over standard input/output (`stdio` transport):
+- select only the tools required for a request,
+- chain multiple tools sequentially,
+- use previous tool results to determine the next action,
 
-```bash
-python -m ride_agent.server
+
+## Example
+
+```text
+User: I want to go to Patna airport.
+Agent: What is the pickup location?
+
+User: IIT Patna
+
+LLM
+ ↓
+geocode_location(IIT Patna)
+ ↓
+geocode_location(Patna Airport)
+ ↓
+get_ride_time(...)
+ ↓
+get_ride_price(...)
+ ↓
+Final natural-language answer
 ```
 
-Or execute directly with Python:
+## Run Locally
 
-```bash
-python src/ride_agent/server.py
-```
-
----
-
-## 6. How to Open MCP Inspector
-
-You can inspect and interact with the server in the browser using the official MCP CLI development inspector:
+Start the MCP server/Inspector:
 
 ```bash
 mcp dev src/ride_agent/server.py
 ```
 
-This launches the web-based MCP Inspector where you will see the `geocode_location` tool listed.
-
----
-
-## 7. How to Test `geocode_location`
-
-### In the MCP Inspector UI:
-1. Open the **Tools** tab in MCP Inspector.
-2. Select `geocode_location`.
-3. Provide the input:
-   ```json
-   {
-     "location": "IIT Patna"
-   }
-   ```
-4. Click **Run Tool** and inspect the returned coordinates.
-
-### Via Python:
-```python
-from ride_agent.tools.geocoding import geocode_location
-
-result = geocode_location("IIT Patna")
-print(result)
-```
-
----
-
-## 8. How to Run Pytest
-
-Run unit tests (all tests mock the external HTTP layer to prevent network dependency):
+Run with local Qwen through Ollama:
 
 ```bash
-pytest -v
+python -m ride_agent.cli --llm --provider ollama --model "qwen2.5:3b" "I want to go from IIT Patna to Patna airport. Tell me the approximate distance, travel time, and fare."
 ```
 
----
+Run with an OpenAI-compatible provider:
 
-## 9. Example Input and Output
-
-### Successful Geocode
-**Input:**
-```json
-{
-  "location": "IIT Patna"
-}
+```bash
+python -m ride_agent.cli --llm --provider openai --model "YOUR_MODEL_NAME" "I want to go from IIT Patna to Patna airport. Tell me the approximate distance, travel time, and fare."
 ```
 
-**Output:**
-```json
-{
-  "success": true,
-  "latitude": 25.5424381,
-  "longitude": 84.8516072,
-  "display_name": "Indian Institute of Technology Patna, Bihta-Lai road, Bihta, Patna, Bihar, 801106, India"
-}
-```
+Keep API credentials in a local `.env` file and never commit secrets.
 
-### Unknown Location
-**Input:**
-```json
-{
-  "location": "kjsdhfkjsdhf92837498273498"
-}
-```
+## Project Goal
 
-**Output:**
-```json
-{
-  "success": false,
-  "error": "Location not found: kjsdhfkjsdhf92837498273498"
-}
-```
-
-### Empty Input
-**Input:**
-```json
-{
-  "location": ""
-}
-```
-
-**Output:**
-```json
-{
-  "success": false,
-  "error": "Location cannot be empty"
-}
-```
-
----
-
-## 10. Nominatim Usage & Rate-Limit Policy Note
-
-This service strictly adheres to the [OpenStreetMap Nominatim Usage Policy](https://operations.osmfoundation.org/policies/nominatim/):
-1. **Identifiable User-Agent**: Every request includes a distinct `User-Agent` header configured via `RIDE_AGENT_USER_AGENT`.
-2. **Rate Limit**: Outgoing requests to Nominatim are throttled to a maximum rate of 1 request per second.
-3. **Caching**: In-process memory caching prevents duplicate requests for identical location queries.
+Demonstrate **model-driven tool selection, sequential tool use, MCP-based execution** while keeping the LLM provider replaceable and the underlying ride tools independent of the model.
