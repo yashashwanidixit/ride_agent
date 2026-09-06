@@ -86,7 +86,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def call_with_tools(
         self,
-        user_message: str,
+        messages: List[Dict[str, Any]],
         tools: List[ToolDefinition],
     ) -> Dict[str, Any]:
         if httpx is None:
@@ -95,12 +95,11 @@ class OpenAICompatibleProvider(LLMProvider):
         client = self.get_client()
 
         payload = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "user", "content": user_message},
-            ],
-            "tools": self._to_openai_tool_format(tools),
-        }
+                    "model": self.model_name,
+                    "messages": messages,
+                    "tools": self._to_ollama_tool_format(tools),
+                    "stream": False,
+                }
 
         response = client.post(
             self.api_url,

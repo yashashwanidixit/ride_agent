@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from ride_agent.agent.llm.base import LLMProvider, ToolCall, ToolDefinition
 from ride_agent.agent.mcp_client import MCPClient
-
+from ride_agent.agent.prompts import RIDE_CONCIERGE_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 
@@ -98,10 +98,21 @@ class Stage5Orchestrator:
                 f"Available MCP tools: {[t.name for t in tool_definitions]}"
             )
 
+            messages = [
+                {
+                    "role": "system",
+                    "content": RIDE_CONCIERGE_SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": user_message,
+                },
+            ]
+
             llm_response = self.llm_provider.call_with_tools(
-                user_message,
+                messages,
                 tool_definitions,
-            )
+)
 
             tool_call: Optional[ToolCall] = self.llm_provider.extract_tool_call(
                 llm_response

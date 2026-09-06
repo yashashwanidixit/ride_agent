@@ -60,7 +60,7 @@ class LLMProvider(ABC):
     @abstractmethod
     def call_with_tools(
         self,
-        user_message: str,
+        messages: List[Dict[str, Any]],
         tools: List[ToolDefinition],
     ) -> Any:
         """Send the user message and available tools to the model.
@@ -74,6 +74,10 @@ class LLMProvider(ABC):
     @abstractmethod
     def extract_tool_call(self, response: Any) -> Optional[ToolCall]:
         """Normalize a raw provider response into a ToolCall, or None."""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def is_available(self) -> bool:
         raise NotImplementedError
 
     def close(self) -> None:

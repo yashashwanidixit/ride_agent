@@ -95,7 +95,7 @@ class OllamaProvider(LLMProvider):
 
     def call_with_tools(
         self,
-        user_message: str,
+        messages: List[Dict[str, Any]],
         tools: List[ToolDefinition],
     ) -> Dict[str, Any]:
         if httpx is None:
@@ -105,12 +105,7 @@ class OllamaProvider(LLMProvider):
 
         payload = {
             "model": self.model_name,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": user_message,
-                }
-            ],
+            "messages": messages,
             "tools": self._to_ollama_tool_format(tools),
             "stream": False,
         }

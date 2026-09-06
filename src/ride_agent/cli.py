@@ -49,35 +49,36 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
 
 def _run_llm_integration(user_request: str, model_name: str) -> None:
-    """Run the Stage 5 LLM+MCP integration.
+    """Run the Stage 5 LLM + MCP integration."""
 
-    Args:
-        user_request: Natural language request from the user.
-        model_name: Name of the Ollama model to use.
-    """
     from ride_agent.agent import Stage5Orchestrator
+    from ride_agent.agent.llm import OllamaProvider
 
     print("\n" + "=" * 70)
     print("STAGE 5: LLM + MCP INTEGRATION")
     print("=" * 70)
     print(f"\nUser Request:\n{user_request}\n")
 
-    orchestrator = Stage5Orchestrator(model_name=model_name)
+    # Concrete provider is created at the application/CLI boundary.
+    provider = OllamaProvider(model_name=model_name)
+
+    orchestrator = Stage5Orchestrator(
+        llm_provider=provider
+    )
 
     try:
-        # Initialize
         if not orchestrator.initialize():
-            print("\n Failed to initialize. Check that Ollama is running.")
+            print("\nFailed to initialize. Check that Ollama is running.")
             sys.exit(1)
 
-        # Print discovered tools
         tools = orchestrator.mcp_client.discover_tools()
+
         print(f"\nMCP Tools Discovered: ({len(tools)})")
         for tool in tools:
             print(f"  - {tool.name}")
 
-        # Process request
-        print(f"\nProcessing request through LLM ({orchestrator.llm.model_name})...\n")
+        print(f"\nProcessing request through LLM ({model_name})...\n")
+
         result = orchestrator.process_user_request(user_request)
 
         if result:
@@ -89,12 +90,12 @@ def _run_llm_integration(user_request: str, model_name: str) -> None:
             print("\n(No tool was invoked)")
 
     except Exception as e:
-        print(f"\n Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
+
     finally:
         orchestrator.cleanup()
         print("\n" + "=" * 70)
-
 
 if __name__ == "__main__":
     main()
