@@ -29,18 +29,18 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser.add_argument(
         "--llm",
         action="store_true",
-        help="Use Stage 5 LLM+MCP integration instead of direct geocoding.",
+        help="Use the Stage 6 sequential LLM+MCP agent loop instead of direct geocoding.",
     )
     parser.add_argument(
         "--model",
         default="qwen2.5:3b",
         help="Ollama model to use (default: qwen2.5:3b).",
     )
-    
+
     args = parser.parse_args(argv)
 
     if args.llm:
-        # Stage 5: LLM+MCP integration
+        # Stage 6: sequential LLM+MCP agent loop
         _run_llm_integration(args.location, args.model)
     else:
         # Original Stage 1: Direct geocoding
@@ -49,13 +49,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
 
 def _run_llm_integration(user_request: str, model_name: str) -> None:
-    """Run the Stage 5 LLM + MCP integration."""
+    """Run the Stage 6 sequential LLM + MCP agent loop."""
 
     from ride_agent.agent import Stage5Orchestrator
     from ride_agent.agent.llm import OllamaProvider
 
     print("\n" + "=" * 70)
-    print("STAGE 5: LLM + MCP INTEGRATION")
+    print("STAGE 6: SEQUENTIAL AGENT LOOP (LLM + MCP)")
     print("=" * 70)
     print(f"\nUser Request:\n{user_request}\n")
 
@@ -77,17 +77,15 @@ def _run_llm_integration(user_request: str, model_name: str) -> None:
         for tool in tools:
             print(f"  - {tool.name}")
 
-        print(f"\nProcessing request through LLM ({model_name})...\n")
+        print(f"\nProcessing request through LLM ({model_name})...")
+        print("(Watch the log lines below for each tool call in the sequence.)\n")
 
-        result = orchestrator.process_user_request(user_request)
+        final_answer = orchestrator.process_user_request(user_request)
 
-        if result:
-            print("\n" + "-" * 70)
-            print("MCP Tool Result:")
-            print("-" * 70)
-            print(json.dumps(result, indent=2))
-        else:
-            print("\n(No tool was invoked)")
+        print("\n" + "-" * 70)
+        print("Final answer:")
+        print("-" * 70)
+        print(final_answer)
 
     except Exception as e:
         print(f"\nError: {e}")
@@ -96,6 +94,7 @@ def _run_llm_integration(user_request: str, model_name: str) -> None:
     finally:
         orchestrator.cleanup()
         print("\n" + "=" * 70)
+
 
 if __name__ == "__main__":
     main()

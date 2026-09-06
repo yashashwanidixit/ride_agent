@@ -2,8 +2,9 @@
 
 All Ollama API details (HTTP endpoints, request/response shapes, the
 "/api/chat" tool-calling format) live in this module only. Nothing
-outside this file needs to know how Ollama represents tools or tool
-calls.
+outside this file needs to know how Ollama represents tools, tool
+calls, or conversation messages. The Stage 6 agent loop itself lives
+in the orchestrator, not here.
 """
 
 import json
@@ -132,15 +133,37 @@ class OllamaProvider(LLMProvider):
 
             name = function.get("name")
             arguments = function.get("arguments", {})
+            call_id = tool_call.get("id")  # Ollama does not always send one.
 
             if not name:
                 return None
 
-            return ToolCall(name=name, arguments=arguments)
+            return ToolCall(name=name, arguments=arguments, id=call_id)
 
         except Exception as e:
             logger.error(f"Error extracting tool call: {e}")
             return None
+
+    def extract_assistant_message(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Ollama's "message" object is already exactly the shape
+        /api/chat expects back in the messages list on the next turn,
+        so we return it as-is (with a safe default if missing)."""
+        message = response.get("message")
+        if not message:
+            return {"role": "assistant", "content": ""}
+        return message
+
+    def format_tool_result_message(
+        self,
+        tool_call: ToolCall,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Ollama's /api/chat does not require a tool_call_id to
+        correlate a tool response to a specific prior tool call."""
+        return {
+            "role": "tool",
+            "content": json.dumps(result),
+        }
 
     def close(self) -> None:
         if self.client:

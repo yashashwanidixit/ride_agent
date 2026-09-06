@@ -6,6 +6,7 @@ works with the official OpenAI API as well as any OpenAI-compatible
 endpoint implementing the same contract.
 
 All OpenAI-specific request/response handling lives in this file only.
+The Stage 6 agent loop itself lives in the orchestrator, not here.
 """
 
 import json
@@ -95,11 +96,16 @@ class OpenAICompatibleProvider(LLMProvider):
         client = self.get_client()
 
         payload = {
-                    "model": self.model_name,
-                    "messages": messages,
-                    "tools": self._to_ollama_tool_format(tools),
-                    "stream": False,
-                }
+            "model": self.model_name,
+            "messages": messages,
+            # BUGFIX (found while implementing Stage 6): this previously
+            # called self._to_ollama_tool_format(tools), a method that
+            # does not exist on this class. It would have raised
+            # AttributeError the first time this provider was actually
+            # invoked for real (Stage 5 tests never exercised this path
+            # because they mock the provider).
+            "tools": self._to_openai_tool_format(tools),
+        }
 
         response = client.post(
             self.api_url,
@@ -134,6 +140,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
             name = function.get("name")
             raw_arguments = function.get("arguments", "{}")
+            call_id = tool_call.get("id")
 
             if not name:
                 return None
@@ -149,11 +156,39 @@ class OpenAICompatibleProvider(LLMProvider):
             else:
                 arguments = {}
 
-            return ToolCall(name=name, arguments=arguments)
+            return ToolCall(name=name, arguments=arguments, id=call_id)
 
         except Exception as e:
             logger.error(f"Error extracting tool call: {e}")
             return None
+
+    def extract_assistant_message(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """The choices[0].message object is already exactly the shape
+        the chat completions API expects back in the messages list on
+        the next turn, so we return it as-is (with a safe default)."""
+        choices = response.get("choices", [])
+        if not choices:
+            return {"role": "assistant", "content": ""}
+        return choices[0].get("message") or {"role": "assistant", "content": ""}
+
+    def format_tool_result_message(
+        self,
+        tool_call: ToolCall,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """OpenAI-compatible APIs require tool_call_id to correlate this
+        response with a specific entry in the assistant's tool_calls."""
+        if not tool_call.id:
+            logger.warning(
+                f"Tool call for '{tool_call.name}' has no id; the "
+                "OpenAI-compatible API may reject a tool_call_id-less "
+                "tool message on the next turn."
+            )
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": json.dumps(result),
+        }
 
     def close(self) -> None:
         if self.client:

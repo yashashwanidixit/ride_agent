@@ -1,10 +1,10 @@
-"""Provider-neutral interfaces for the Stage 5 LLM integration layer.
+"""Provider-neutral interfaces for the Stage 5/6 LLM integration layer.
 
 This module defines the contract every LLM provider (Ollama,
 OpenAI-compatible, or any future provider) must implement, along with
-the provider-neutral data structures used to pass tool definitions and
-tool calls between the MCP layer, the LLM provider, and the
-orchestrator.
+the provider-neutral data structures used to pass tool definitions,
+tool calls, and conversation messages between the MCP layer, the LLM
+provider, and the orchestrator.
 
 Nothing in this module is aware of Ollama, OpenAI, Qwen, GPT, or any
 specific model.
@@ -38,10 +38,17 @@ class ToolCall:
     Every LLMProvider implementation is responsible for translating its
     own raw API response into this shape. The orchestrator never
     inspects a raw provider response directly.
+
+    `id` is optional because not every provider's wire format assigns
+    an id to a tool call (Ollama's /api/chat typically does not).
+    OpenAI-compatible APIs require it to correlate a tool-result
+    message back to the tool call it answers, via
+    format_tool_result_message().
     """
 
     name: str
     arguments: Dict[str, Any] = field(default_factory=dict)
+    id: Optional[str] = None
 
 
 class LLMProvider(ABC):
@@ -63,11 +70,12 @@ class LLMProvider(ABC):
         messages: List[Dict[str, Any]],
         tools: List[ToolDefinition],
     ) -> Any:
-        """Send the user message and available tools to the model.
+        """Send the conversation history and available tools to the model.
 
         Returns the raw, provider-specific response object/dict. This
         raw response must ONLY ever be consumed by this same provider's
-        extract_tool_call() implementation - never by the orchestrator.
+        extract_tool_call() / extract_assistant_message() - never by
+        the orchestrator.
         """
         raise NotImplementedError
 
@@ -75,9 +83,32 @@ class LLMProvider(ABC):
     def extract_tool_call(self, response: Any) -> Optional[ToolCall]:
         """Normalize a raw provider response into a ToolCall, or None."""
         raise NotImplementedError
-    
+
     @abstractmethod
-    def is_available(self) -> bool:
+    def extract_assistant_message(self, response: Any) -> Dict[str, Any]:
+        """Return the assistant's message from a raw response, in this
+        provider's own wire format, suitable for appending directly to
+        the conversation history passed into the next call_with_tools().
+
+        Must always include at least "role" and "content" keys. When the
+        response includes a tool call, this message must also carry
+        whatever provider-specific tool-call representation that
+        provider's own wire format expects (e.g. an OpenAI-style
+        "tool_calls" list), since it is fed straight back to the same
+        provider on the next turn.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def format_tool_result_message(
+        self,
+        tool_call: ToolCall,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build the tool-result message, in this provider's own wire
+        format, to append to conversation history after executing
+        tool_call and obtaining result (which may represent a failure -
+        callers should not assume result implies success)."""
         raise NotImplementedError
 
     def close(self) -> None:
